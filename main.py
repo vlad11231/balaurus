@@ -9,15 +9,12 @@ from py_clob_client.clob_types import OrderArgs, OrderType
 # ==========================================
 PROXY_URL = os.getenv("PROXY_URL")
 if PROXY_URL:
-    # Eliminăm slash-ul '/' de la final dacă a fost pus din greșeală
     clean_proxy = PROXY_URL.rstrip('/')
-    
-    # Forțăm Python-ul să folosească Proxy-ul peste tot
     os.environ["http_proxy"] = clean_proxy
     os.environ["https_proxy"] = clean_proxy
     os.environ["HTTP_PROXY"] = clean_proxy
     os.environ["HTTPS_PROXY"] = clean_proxy
-    print(f"🌐 Sistem anti-block activat! Rutat prin: {clean_proxy}")
+    print(f"🌐 Sistem anti-block activat! Rutat prin proxy.")
 else:
     print("⚠️ ATENȚIE: Nu ai setat PROXY_URL. Dacă serverul e în SUA, vei fi blocat.")
 
@@ -26,9 +23,9 @@ else:
 # ==========================================
 
 TARGET_ADDRESS = "0x1d0034134e339a309700ff2d34e99fa2d48b0313".lower()
-TRADE_AMOUNT_USD = 1.0  # Cumpără exact de $1
-MAX_TRADES = 5          # Se oprește definitiv după 5 tranzacții reușite
-MIN_PRICE = 0.30        # Ignoră tranzacțiile sub 30 de cenți
+TRADE_AMOUNT_USD = 1.0  
+MAX_TRADES = 5          
+MIN_PRICE = 0.30        
 
 PRIVATE_KEY = os.getenv("PRIVATE_KEY")
 if not PRIVATE_KEY:
@@ -39,7 +36,7 @@ if not PRIVATE_KEY.startswith("0x"):
     PRIVATE_KEY = "0x" + PRIVATE_KEY
 
 HOST = "https://clob.polymarket.com"
-CHAIN_ID = 137  # Rețeaua Polygon Mainnet
+CHAIN_ID = 137  
 API_ACTIVITY = "https://data-api.polymarket.com/activity"
 
 # ==========================================
@@ -65,8 +62,11 @@ processed_ids = set()
 def fetch_activity(addr):
     try:
         r = requests.get(API_ACTIVITY, params={"user": addr, "limit": 10}, timeout=10)
+        if r.status_code != 200:
+            print(f"⚠️ Eroare API Polymarket (Status {r.status_code}) - Poate proxy-ul e blocat.")
         return r.json() if r.status_code == 200 else []
-    except:
+    except Exception as e:
+        print(f"❌ EROARE DE REȚEA/PROXY: Botul nu are net. Detalii: {e}")
         return []
 
 print("🔍 Scanez istoricul vechi pentru a nu-l copia...")
@@ -106,12 +106,7 @@ while trades_executed < MAX_TRADES:
 
                 print(f"\n🚨 DETECTAT VALID: Targetul a cumpărat: {title} @ {price*100}¢")
                 
-                # ==== MARKET ORDER LOGIC ====
-                # Calculam size-ul pentru 1$ 
                 size = round(TRADE_AMOUNT_USD / price, 2)
-                
-                # Punem un buffer de slippage mai mare pentru a actiona exact ca un Market Order
-                # adica sa "mature" instant cel mai bun pret din order book.
                 exec_price = min(price + 0.05, 0.99)
                 
                 print(f"🛒 Pun ordin tip MARKET: Cumpăr {size} acțiuni (Total fix: ${TRADE_AMOUNT_USD})")
