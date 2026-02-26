@@ -1,8 +1,8 @@
 import os
 import time
 import requests
-from pyclob.client import ClobClient
-from pyclob.models import OrderArgs
+from py_clob_client.client import ClobClient
+from py_clob_client.clob_types import OrderArgs
 
 # ==========================================
 # 1. CONFIGURARE COPY TRADING TEST
@@ -11,11 +11,11 @@ from pyclob.models import OrderArgs
 TARGET_ADDRESS = "0x1d0034134e339a309700ff2d34e99fa2d48b0313".lower()
 TRADE_AMOUNT_USD = 1.0  # Cumpără exact de $1
 MAX_TRADES = 5          # Se oprește definitiv după 5 tranzacții reușite
-MIN_PRICE = 0.30        # NOU: Ignoră tranzacțiile sub 30 de cenți
+MIN_PRICE = 0.30        # Ignoră tranzacțiile sub 30 de cenți
 
 PRIVATE_KEY = os.getenv("PRIVATE_KEY")
 if not PRIVATE_KEY:
-    print("❌ EROARE: Nu ai setat PRIVATE_KEY în variabilele de mediu!")
+    print("❌ EROARE: Nu ai setat PRIVATE_KEY în variabilele de mediu din Railway!")
     exit(1)
 
 # Asigură-te că cheia privată începe cu 0x
