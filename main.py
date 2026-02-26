@@ -11,6 +11,7 @@ from pyclob.models import OrderArgs
 TARGET_ADDRESS = "0x1d0034134e339a309700ff2d34e99fa2d48b0313".lower()
 TRADE_AMOUNT_USD = 1.0  # Cumpără exact de $1
 MAX_TRADES = 5          # Se oprește definitiv după 5 tranzacții reușite
+MIN_PRICE = 0.30        # NOU: Ignoră tranzacțiile sub 30 de cenți
 
 PRIVATE_KEY = os.getenv("PRIVATE_KEY")
 if not PRIVATE_KEY:
@@ -64,7 +65,7 @@ for e in initial_events:
 trades_executed = 0
 
 print(f"🚀 BOT PORNIT! Urmăresc adresa: {TARGET_ADDRESS}")
-print(f"🎯 Obiectiv: Execută {MAX_TRADES} tranzacții de ${TRADE_AMOUNT_USD} și apoi STOP.")
+print(f"🎯 Obiectiv: Execută {MAX_TRADES} tranzacții de ${TRADE_AMOUNT_USD} (Doar poziții >= {MIN_PRICE*100}¢)")
 
 while trades_executed < MAX_TRADES:
     try:
@@ -86,9 +87,13 @@ while trades_executed < MAX_TRADES:
             token_id = e.get("asset") # ID-ul unic al monedei Yes/No
             price = float(e.get("price", 0))
 
-            # Copiem DOAR tranzacțiile noi de tip BUY
-            if side == "BUY" and event_type == "TRADE" and price > 0 and token_id:
-                print(f"\n🚨 DETECTAT: Targetul a cumpărat: {title}")
+            # Copiem DOAR tranzacțiile de tip BUY care îndeplinesc condiția de preț
+            if side == "BUY" and event_type == "TRADE" and token_id:
+                if price < MIN_PRICE:
+                    print(f"⏭️ TARGETUL A CUMPĂRAT: {title} la {price*100}¢. (IGNORAT - Preț sub {MIN_PRICE*100}¢)")
+                    continue
+
+                print(f"\n🚨 DETECTAT VALID: Targetul a cumpărat: {title} @ {price*100}¢")
                 
                 # Calculăm prețul de execuție (+1 cent slippage ca să fim siguri că se execută)
                 exec_price = min(price + 0.01, 0.99)
@@ -96,10 +101,10 @@ while trades_executed < MAX_TRADES:
                 # Calculăm câte acțiuni putem lua de $1 (Polymarket cere minim 2 zecimale)
                 size = round(TRADE_AMOUNT_USD / exec_price, 2)
                 
-                print(f"🛒 Pun ordin: Cumpăr {size} acțiuni la prețul de {exec_price}¢ (Total: ~${TRADE_AMOUNT_USD})")
+                print(f"🛒 Pun ordin: Cumpăr {size} acțiuni la prețul de {exec_price*100:.1f}¢ (Total: ~${TRADE_AMOUNT_USD})")
                 
                 try:
-                    # Construim ordinul Limit (Fill-Or-Kill pentru siguranță)
+                    # Construim ordinul Limit
                     order_args = OrderArgs(
                         price=exec_price,
                         size=size,
@@ -107,7 +112,7 @@ while trades_executed < MAX_TRADES:
                         token_id=token_id
                     )
                     
-                    # Semnăm și trimitem tranzacția direct pe blockchain/CLOB
+                    # Semnăm și trimitem tranzacția
                     signed_order = client.create_order(order_args)
                     resp = client.post_order(signed_order)
                     
@@ -115,12 +120,12 @@ while trades_executed < MAX_TRADES:
                         trades_executed += 1
                         print(f"✅ SUCCES! Trade {trades_executed}/{MAX_TRADES} executat. OrderID: {resp.get('orderID')}")
                     else:
-                        print(f"⚠️ Ordin refuzat (poate s-a mișcat prețul prea repede): {resp}")
+                        print(f"⚠️ Ordin refuzat (poate s-a mișcat prețul prea repede sau eroare de fonduri): {resp}")
 
                 except Exception as ex:
                     print(f"❌ Eroare la execuția comenzii: {ex}")
 
-                # Ne oprim instant dacă am atins limita de 5
+                # Ne oprim instant dacă am atins limita
                 if trades_executed >= MAX_TRADES:
                     print("\n🎉 OBIECTIV ATINS! Am executat 5 trade-uri. Botul se oprește conform instrucțiunilor.")
                     exit(0)
