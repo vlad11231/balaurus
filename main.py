@@ -5,6 +5,17 @@ from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderArgs
 
 # ==========================================
+# 0. BYPASS GEO-BLOCK (VPN PENTRU BOT)
+# ==========================================
+PROXY_URL = os.getenv("PROXY_URL")
+if PROXY_URL:
+    os.environ["http_proxy"] = PROXY_URL
+    os.environ["https_proxy"] = PROXY_URL
+    print("🌐 Sistem anti-block activat! Traficul este rutat prin serverul din Europa.")
+else:
+    print("⚠️ ATENȚIE: Nu ai setat PROXY_URL. Dacă serverul e în SUA, Polymarket te va bloca.")
+
+# ==========================================
 # 1. CONFIGURARE COPY TRADING TEST
 # ==========================================
 
@@ -33,13 +44,11 @@ API_ACTIVITY = "https://data-api.polymarket.com/activity"
 print("⏳ Se inițializează conexiunea securizată cu Polymarket...")
 try:
     client = ClobClient(host=HOST, key=PRIVATE_KEY, chain_id=CHAIN_ID)
-    # Generează cheile API derivate din portofelul tău
     creds = client.create_or_derive_api_creds()
     client.set_api_creds(creds)
     print("✅ Autentificare reușită! Botul este conectat la portofelul tău.")
 except Exception as e:
     print(f"❌ Eroare critică la conectarea portofelului: {e}")
-    print("💡 Ai făcut un trade manual pe site înainte să pornești botul?")
     exit(1)
 
 # ==========================================
@@ -55,7 +64,6 @@ def fetch_activity(addr):
     except:
         return []
 
-# Ignoră tranzacțiile vechi la pornire (ca să nu copieze trecutul)
 print("🔍 Scanez istoricul vechi pentru a nu-l copia...")
 initial_events = fetch_activity(TARGET_ADDRESS)
 for e in initial_events:
@@ -70,7 +78,6 @@ print(f"🎯 Obiectiv: Execută {MAX_TRADES} tranzacții de ${TRADE_AMOUNT_USD} 
 while trades_executed < MAX_TRADES:
     try:
         events = fetch_activity(TARGET_ADDRESS)
-        # Sortăm cronologic pentru a executa în ordine
         events.sort(key=lambda x: x.get("timestamp", 0))
 
         for e in events:
@@ -84,10 +91,9 @@ while trades_executed < MAX_TRADES:
             side = e.get("side", "").upper()
             event_type = e.get("type", "TRADE").upper()
             title = e.get("title", "Unknown Market")
-            token_id = e.get("asset") # ID-ul unic al monedei Yes/No
+            token_id = e.get("asset") 
             price = float(e.get("price", 0))
 
-            # Copiem DOAR tranzacțiile de tip BUY care îndeplinesc condiția de preț
             if side == "BUY" and event_type == "TRADE" and token_id:
                 if price < MIN_PRICE:
                     print(f"⏭️ TARGETUL A CUMPĂRAT: {title} la {price*100}¢. (IGNORAT - Preț sub {MIN_PRICE*100}¢)")
@@ -95,16 +101,12 @@ while trades_executed < MAX_TRADES:
 
                 print(f"\n🚨 DETECTAT VALID: Targetul a cumpărat: {title} @ {price*100}¢")
                 
-                # Calculăm prețul de execuție (+1 cent slippage ca să fim siguri că se execută)
                 exec_price = min(price + 0.01, 0.99)
-                
-                # Calculăm câte acțiuni putem lua de $1 (Polymarket cere minim 2 zecimale)
                 size = round(TRADE_AMOUNT_USD / exec_price, 2)
                 
                 print(f"🛒 Pun ordin: Cumpăr {size} acțiuni la prețul de {exec_price*100:.1f}¢ (Total: ~${TRADE_AMOUNT_USD})")
                 
                 try:
-                    # Construim ordinul Limit
                     order_args = OrderArgs(
                         price=exec_price,
                         size=size,
@@ -112,7 +114,6 @@ while trades_executed < MAX_TRADES:
                         token_id=token_id
                     )
                     
-                    # Semnăm și trimitem tranzacția
                     signed_order = client.create_order(order_args)
                     resp = client.post_order(signed_order)
                     
@@ -120,12 +121,11 @@ while trades_executed < MAX_TRADES:
                         trades_executed += 1
                         print(f"✅ SUCCES! Trade {trades_executed}/{MAX_TRADES} executat. OrderID: {resp.get('orderID')}")
                     else:
-                        print(f"⚠️ Ordin refuzat (poate s-a mișcat prețul prea repede sau eroare de fonduri): {resp}")
+                        print(f"⚠️ Ordin refuzat: {resp}")
 
                 except Exception as ex:
                     print(f"❌ Eroare la execuția comenzii: {ex}")
 
-                # Ne oprim instant dacă am atins limita
                 if trades_executed >= MAX_TRADES:
                     print("\n🎉 OBIECTIV ATINS! Am executat 5 trade-uri. Botul se oprește conform instrucțiunilor.")
                     exit(0)
@@ -133,5 +133,4 @@ while trades_executed < MAX_TRADES:
     except Exception as e:
         print(f"Eroare în bucla de monitorizare: {e}")
     
-    # Așteaptă 10 secunde înainte să scaneze iar
     time.sleep(10)
