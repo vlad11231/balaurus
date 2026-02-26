@@ -2,18 +2,24 @@ import os
 import time
 import requests
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs
+from py_clob_client.clob_types import OrderArgs, OrderType
 
 # ==========================================
 # 0. BYPASS GEO-BLOCK (VPN PENTRU BOT)
 # ==========================================
 PROXY_URL = os.getenv("PROXY_URL")
 if PROXY_URL:
-    os.environ["http_proxy"] = PROXY_URL
-    os.environ["https_proxy"] = PROXY_URL
-    print("🌐 Sistem anti-block activat! Traficul este rutat prin serverul din Europa.")
+    # Eliminăm slash-ul '/' de la final dacă a fost pus din greșeală
+    clean_proxy = PROXY_URL.rstrip('/')
+    
+    # Forțăm Python-ul să folosească Proxy-ul peste tot
+    os.environ["http_proxy"] = clean_proxy
+    os.environ["https_proxy"] = clean_proxy
+    os.environ["HTTP_PROXY"] = clean_proxy
+    os.environ["HTTPS_PROXY"] = clean_proxy
+    print(f"🌐 Sistem anti-block activat! Rutat prin: {clean_proxy}")
 else:
-    print("⚠️ ATENȚIE: Nu ai setat PROXY_URL. Dacă serverul e în SUA, Polymarket te va bloca.")
+    print("⚠️ ATENȚIE: Nu ai setat PROXY_URL. Dacă serverul e în SUA, vei fi blocat.")
 
 # ==========================================
 # 1. CONFIGURARE COPY TRADING TEST
@@ -29,7 +35,6 @@ if not PRIVATE_KEY:
     print("❌ EROARE: Nu ai setat PRIVATE_KEY în variabilele de mediu din Railway!")
     exit(1)
 
-# Asigură-te că cheia privată începe cu 0x
 if not PRIVATE_KEY.startswith("0x"):
     PRIVATE_KEY = "0x" + PRIVATE_KEY
 
@@ -96,15 +101,20 @@ while trades_executed < MAX_TRADES:
 
             if side == "BUY" and event_type == "TRADE" and token_id:
                 if price < MIN_PRICE:
-                    print(f"⏭️ TARGETUL A CUMPĂRAT: {title} la {price*100}¢. (IGNORAT - Preț sub {MIN_PRICE*100}¢)")
+                    print(f"⏭️ TARGETUL A CUMPĂRAT: {title} la {price*100}¢. (IGNORAT - Preț prea mic)")
                     continue
 
                 print(f"\n🚨 DETECTAT VALID: Targetul a cumpărat: {title} @ {price*100}¢")
                 
-                exec_price = min(price + 0.01, 0.99)
-                size = round(TRADE_AMOUNT_USD / exec_price, 2)
+                # ==== MARKET ORDER LOGIC ====
+                # Calculam size-ul pentru 1$ 
+                size = round(TRADE_AMOUNT_USD / price, 2)
                 
-                print(f"🛒 Pun ordin: Cumpăr {size} acțiuni la prețul de {exec_price*100:.1f}¢ (Total: ~${TRADE_AMOUNT_USD})")
+                # Punem un buffer de slippage mai mare pentru a actiona exact ca un Market Order
+                # adica sa "mature" instant cel mai bun pret din order book.
+                exec_price = min(price + 0.05, 0.99)
+                
+                print(f"🛒 Pun ordin tip MARKET: Cumpăr {size} acțiuni (Total fix: ${TRADE_AMOUNT_USD})")
                 
                 try:
                     order_args = OrderArgs(
@@ -119,9 +129,9 @@ while trades_executed < MAX_TRADES:
                     
                     if resp and resp.get("success"):
                         trades_executed += 1
-                        print(f"✅ SUCCES! Trade {trades_executed}/{MAX_TRADES} executat. OrderID: {resp.get('orderID')}")
+                        print(f"✅ SUCCES! Trade {trades_executed}/{MAX_TRADES} executat instant. OrderID: {resp.get('orderID')}")
                     else:
-                        print(f"⚠️ Ordin refuzat: {resp}")
+                        print(f"⚠️ Ordin refuzat de API-ul Polymarket: {resp}")
 
                 except Exception as ex:
                     print(f"❌ Eroare la execuția comenzii: {ex}")
