@@ -7,8 +7,11 @@ from collections import Counter
 # 1. CONFIGURARE
 # ==========================================
 TARGET_ADDRESS = "0x1d0034134e339a309700ff2d34e99fa2d48b0313".lower()
-TELEGRAM_TOKEN = os.getenv("8261089656:AAF_JM39II4DpfiFzVTd0zsXZKtKcDE5G9A")
-TELEGRAM_CHAT_ID = os.getenv("6854863928")
+
+# AM SCOS os.getenv ȘI AM LĂSAT DOAR VALORILE ÎNTRE GHILIMELE:
+TELEGRAM_TOKEN = "8261089656:AAF_JM39II4DpfiFzVTd0zsXZKtKcDE5G9A"
+TELEGRAM_CHAT_ID = "6854863928"
+
 API_ACTIVITY = "https://data-api.polymarket.com/activity"
 
 def send_telegram_alert(message):
@@ -27,6 +30,8 @@ def send_telegram_alert(message):
         print("✅ Raport trimis cu succes pe Telegram!")
     except Exception as e:
         print(f"❌ Eroare la trimiterea pe Telegram: {e}")
+
+# ... (restul codului tău de mai jos rămâne identic) ...
 
 # ==========================================
 # 2. LOGICA DE EXTRAGERE ȘI ANALIZĂ
