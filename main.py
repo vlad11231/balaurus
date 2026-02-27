@@ -1,126 +1,90 @@
 import os
-import time
 import requests
-import threading
-from flask import Flask
-from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs
+import time
+from collections import Counter
 
 # ==========================================
-# 1. CONFIGURARE COPY TRADING TEST
+# 1. CONFIGURARE
 # ==========================================
-
 TARGET_ADDRESS = "0x1d0034134e339a309700ff2d34e99fa2d48b0313".lower()
-TRADE_AMOUNT_USD = 1.0  
-MAX_TRADES = 5          
-MIN_PRICE = 0.30        
-
-PRIVATE_KEY = os.getenv("PRIVATE_KEY")
-
-HOST = "https://clob.polymarket.com"
-CHAIN_ID = 137  
+TELEGRAM_TOKEN = os.getenv("8261089656:AAF_JM39II4DpfiFzVTd0zsXZKtKcDE5G9A
+")
+TELEGRAM_CHAT_ID = os.getenv("6854863928")
 API_ACTIVITY = "https://data-api.polymarket.com/activity"
 
-# ==========================================
-# 2. SERVER WEB (CA SĂ ȚINĂ BOTUL ONLINE)
-# ==========================================
-app = Flask(__name__)
-PORT = int(os.getenv("PORT", 5000))
-
-@app.route("/")
-def index():
-    return "🤖 Botul de Copy Trading rulează direct din Europa!"
-
-def run_server():
-    app.run(host="0.0.0.0", port=PORT)
-
-# ==========================================
-# 3. LOGICA DE COPY TRADING
-# ==========================================
-def bot_loop():
-    if not PRIVATE_KEY:
-        print("❌ EROARE: Nu ai setat PRIVATE_KEY în variabilele de mediu!")
+def send_telegram_alert(message):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("❌ EROARE: Nu ai setat datele de Telegram în Railway!")
         return
-
-    pk = PRIVATE_KEY if PRIVATE_KEY.startswith("0x") else "0x" + PRIVATE_KEY
-
-    print("⏳ Se inițializează conexiunea securizată cu Polymarket...")
+    
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML"
+    }
     try:
-        client = ClobClient(host=HOST, key=pk, chain_id=CHAIN_ID)
-        creds = client.create_or_derive_api_creds()
-        client.set_api_creds(creds)
-        print("✅ Autentificare reușită! Botul este conectat.")
+        requests.post(url, json=payload)
+        print("✅ Raport trimis cu succes pe Telegram!")
     except Exception as e:
-        print(f"❌ Eroare critică la conectare: {e}")
+        print(f"❌ Eroare la trimiterea pe Telegram: {e}")
+
+# ==========================================
+# 2. LOGICA DE EXTRAGERE ȘI ANALIZĂ
+# ==========================================
+def analyze_wallet():
+    print(f"🔍 Extrag ultimele tranzacții pentru: {TARGET_ADDRESS}")
+    
+    try:
+        # Cerem ultimele 200 de evenimente
+        r = requests.get(API_ACTIVITY, params={"user": TARGET_ADDRESS, "limit": 200}, timeout=15)
+        if r.status_code != 200:
+            send_telegram_alert(f"⚠️ Eroare API Polymarket: {r.status_code}")
+            return
+            
+        data = r.json()
+    except Exception as e:
+        send_telegram_alert(f"❌ Eroare de rețea: {e}")
         return
 
-    processed_ids = set()
+    if not data:
+        send_telegram_alert("📉 Nu am găsit tranzacții pentru această adresă.")
+        return
 
-    def fetch_activity(addr):
-        try:
-            r = requests.get(API_ACTIVITY, params={"user": addr, "limit": 10}, timeout=10)
-            return r.json() if r.status_code == 200 else []
-        except: return []
-
-    print("🔍 Scanez istoricul vechi...")
-    for e in fetch_activity(TARGET_ADDRESS):
-        uid = e.get("id") or f"{e.get('transactionHash')}_{e.get('logIndex')}"
-        processed_ids.add(uid)
-
-    trades_executed = 0
-    print(f"🚀 BOT PORNIT! Urmăresc: {TARGET_ADDRESS}")
-
-    while trades_executed < MAX_TRADES:
-        try:
-            events = fetch_activity(TARGET_ADDRESS)
-            events.sort(key=lambda x: x.get("timestamp", 0))
-
-            for e in events:
-                uid = e.get("id") or f"{e.get('transactionHash')}_{e.get('logIndex')}"
-                if uid in processed_ids: continue
-                processed_ids.add(uid)
-
-                side = e.get("side", "").upper()
-                event_type = e.get("type", "TRADE").upper()
-                title = e.get("title", "Unknown Market")
-                token_id = e.get("asset") 
-                price = float(e.get("price", 0))
-
-                if side == "BUY" and event_type == "TRADE" and token_id:
-                    if price < MIN_PRICE: continue
-
-                    print(f"\n🚨 DETECTAT: Targetul a cumpărat {title} @ {price*100}¢")
-                    
-                    size = round(TRADE_AMOUNT_USD / price, 2)
-                    exec_price = min(price + 0.05, 0.99)
-                    
-                    print(f"🛒 Execut Market Order: Cumpăr {size} acțiuni")
-                    
-                    try:
-                        order_args = OrderArgs(price=exec_price, size=size, side="BUY", token_id=token_id)
-                        signed_order = client.create_order(order_args)
-                        resp = client.post_order(signed_order)
-                        
-                        if resp and resp.get("success"):
-                            trades_executed += 1
-                            print(f"✅ SUCCES! Trade {trades_executed}/{MAX_TRADES}. ID: {resp.get('orderID')}")
-                        else:
-                            print(f"⚠️ Ordin refuzat: {resp}")
-
-                    except Exception as ex:
-                        print(f"❌ Eroare execuție: {ex}")
-
-                    if trades_executed >= MAX_TRADES:
-                        print("\n🎉 OBIECTIV ATINS! Opresc tranzacționarea.")
-                        return
-
-        except Exception as e:
-            print(f"Eroare loop: {e}")
+    total_tx = len(data)
+    
+    # Analiză de bază
+    buys = [d for d in data if d.get("side") == "BUY"]
+    sells = [d for d in data if d.get("side") == "SELL"]
+    
+    # Piețele preferate
+    titles = [d.get("title", "Unknown") for d in data if "title" in d]
+    top_markets = Counter(titles).most_common(3)
+    
+    # Analiza prețurilor medii de cumpărare (ca să vedem dacă vânează reduceri)
+    buy_prices = [float(b.get("price", 0)) for b in buys if b.get("price")]
+    avg_buy_price = (sum(buy_prices) / len(buy_prices)) if buy_prices else 0
+    
+    # Formatăm un raport frumos pentru Telegram
+    raport = f"🕵️‍♂️ <b>RAPORT ANALIZĂ BALENĂ</b> 🕵️‍♂️\n"
+    raport += f"Adresă: <code>{TARGET_ADDRESS[:10]}...</code>\n\n"
+    
+    raport += f"📊 <b>Ultimele {total_tx} tranzacții extrase:</b>\n"
+    raport += f"🛒 Cumpărări (BUY): <b>{len(buys)}</b>\n"
+    raport += f"💰 Vânzări (SELL): <b>{len(sells)}</b>\n"
+    raport += f"💵 Preț mediu de BUY: <b>{avg_buy_price * 100:.1f}¢</b>\n\n"
+    
+    raport += f"🎯 <b>Top 3 Piețe Tranzacționate:</b>\n"
+    for idx, (market, count) in enumerate(top_markets, 1):
+        raport += f"{idx}. {market} ({count} txs)\n"
         
-        time.sleep(10)
+    raport += "\n💡 <i>Concluzie script: Dacă prețul mediu este în jur de 30-40 cenți și tranzacționează aceeași piață obsesiv, confirmă teoria de Arbitraj Matematic.</i>"
+
+    # Trimitem alerta o singură dată
+    send_telegram_alert(raport)
 
 if __name__ == "__main__":
-    t = threading.Thread(target=bot_loop)
-    t.daemon = True
-    t.start()
-    run_server()
+    analyze_wallet()
+    # Adormim scriptul 24 de ore ca să nu se restarteze pe Railway și să îți facă spam pe telefon
+    print("💤 Analiză terminată. Botul intră în stand-by pentru 24h.")
+    time.sleep(86400)
