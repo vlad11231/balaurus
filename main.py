@@ -7,8 +7,7 @@ from collections import Counter
 # 1. CONFIGURARE
 # ==========================================
 TARGET_ADDRESS = "0x1d0034134e339a309700ff2d34e99fa2d48b0313".lower()
-TELEGRAM_TOKEN = os.getenv("8261089656:AAF_JM39II4DpfiFzVTd0zsXZKtKcDE5G9A
-")
+TELEGRAM_TOKEN = os.getenv("8261089656:AAF_JM39II4DpfiFzVTd0zsXZKtKcDE5G9A")
 TELEGRAM_CHAT_ID = os.getenv("6854863928")
 API_ACTIVITY = "https://data-api.polymarket.com/activity"
 
