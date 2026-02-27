@@ -1,20 +1,15 @@
 import os
-import time
 import requests
-from py_clob_client.client import ClobClient
 
 # ==========================================
-# 1. SETĂRI ȘI MASCĂ STEALTH
+# 1. PRELUARE DATE
 # ==========================================
-PRIVATE_KEY = os.getenv("PRIVATE_KEY", "0x0000000000000000000000000000000000000000000000000000000000000000") # Key falsa doar pt test de conexiune
 PROXY_URL = os.getenv("PROXY_URL")
 
-HOST = "https://clob.polymarket.com"
-CHAIN_ID = 137  
-
-# Mască de browser normal ca să păcălim Cloudflare
+# Mască de browser (ca să nu ne detecteze ca fiind un script Python)
 FAKE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Accept": "application/json",
     "Accept-Language": "en-US,en;q=0.9,es;q=0.8"
 }
 
@@ -25,64 +20,61 @@ if PROXY_URL:
         "http": clean_proxy,
         "https": clean_proxy
     }
-    print("🥷 Modul STEALTH (SOCKS5) Activat!")
+    print("🌍 Proxy HTTP setat!")
 else:
-    print("⚠️ Lipsă PROXY_URL. Botul e vizibil.")
+    print("⚠️ ATENȚIE: Nu ai setat PROXY_URL.")
 
 # ==========================================
-# 2. TEST CONEXIUNE POLYMARKET (SOCKS5)
+# 2. TEST 1: VERIFICARE LOCAȚIE (Suntem în Spania?)
+# ==========================================
+def check_ip():
+    print("🔍 Verific adresa IP și locația...")
+    try:
+        r = requests.get("https://ipinfo.io/json", proxies=proxy_dict, timeout=10)
+        data = r.json()
+        print(f"✅ Locație detectată: {data.get('country')} (IP: {data.get('ip')})")
+        
+        if data.get('country') == "ES":
+            print("🇪🇸 BINGO! Suntem în Spania. Trecem la pasul 2...")
+            return True
+        else:
+            print("⚠️ Avertisment: Nu pare a fi IP de Spania.")
+            return True # Continuam oricum
+    except Exception as e:
+        print(f"❌ Eroare la verificarea IP-ului (Proxy Invalid sau Timeout): {e}")
+        return False
+
+# ==========================================
+# 3. TEST 2: TEST POLYMARKET
 # ==========================================
 def test_polymarket():
-    print("⏳ Testez infiltrarea în Polymarket...")
+    print("\n⏳ Batem la ușa Polymarket...")
     try:
-        # Creăm o sesiune simplă mascată pentru a cere date de la ei
+        # Folosim session pentru a pastra header-ele
         session = requests.Session()
         session.headers.update(FAKE_HEADERS)
         if proxy_dict:
             session.proxies.update(proxy_dict)
             
-        # Cerem statusul piețelor (dacă trece de Cloudflare, ne dă 200 OK)
+        # Cerem date de la Polymarket
         r = session.get("https://clob.polymarket.com/markets", timeout=10)
         
         if r.status_code == 200:
-            print("✅ SUCCES: Polymarket a acceptat conexiunea! Geoblock-ul a fost evitat.")
-            return True
+            print("🚀 SUCCES ABSOLUT! Polymarket ne-a acceptat conexiunea din prima!")
+            print("Sistemul e gata de trading.")
+        elif r.status_code == 403:
+            print("❌ EROARE 403: Cloudflare ne-a dat Block. (Geoblock detectat).")
         else:
-            print(f"❌ EROARE Polymarket (Status {r.status_code}): Cloudflare ne-a blocat.")
-            return False
+            print(f"⚠️ Răspuns neașteptat: {r.status_code}")
+            
     except Exception as e:
-        print(f"❌ Eroare fatală de rețea (Proxy invalid): {e}")
-        return False
+        print(f"❌ Eroare fatală de rețea cu Polymarket: {e}")
 
 # ==========================================
-# 3. TEST ORACOL PYTH (Viteza Luminii)
-# ==========================================
-# ID-ul oficial Pyth pentru prețul Bitcoin
-PYTH_BTC_ID = "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
-
-def test_pyth_oracle():
-    print("\n⏳ Conectare la Oracolul Pyth...")
-    try:
-        url = f"https://hermes.pyth.network/api/latest_price_feeds?ids[]={PYTH_BTC_ID}"
-        r = requests.get(url, timeout=5)
-        
-        if r.status_code == 200:
-            data = r.json()[0]['price']
-            price = int(data['price']) * (10 ** data['expo'])
-            print(f"✅ SUCCES Pyth: Prețul exact BTC acum este: ${price:.2f}")
-        else:
-            print("❌ EROARE: Nu pot citi oracolul Pyth.")
-    except Exception as e:
-        print(f"❌ Eroare Pyth: {e}")
-
-# ==========================================
-# 4. EXECUȚIA
+# EXECUȚIE
 # ==========================================
 if __name__ == "__main__":
-    poly_ok = test_polymarket()
-    if poly_ok:
-        test_pyth_oracle()
-        print("\n🎉 Toate sistemele sunt VERZI! Railway e gata de vânătoare.")
-    
-    print("💤 Test finalizat.")
-    time.sleep(86400)
+    if check_ip():
+        test_polymarket()
+    else:
+        print("Misiune anulată. Verifică setările proxy-ului.")
