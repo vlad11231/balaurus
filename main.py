@@ -1,94 +1,92 @@
-import os
 import requests
+import csv
 import time
-from collections import Counter
 
 # ==========================================
 # 1. CONFIGURARE
 # ==========================================
 TARGET_ADDRESS = "0x1d0034134e339a309700ff2d34e99fa2d48b0313".lower()
 
-# AM SCOS os.getenv ȘI AM LĂSAT DOAR VALORILE ÎNTRE GHILIMELE:
+# Datele tale de Telegram:
 TELEGRAM_TOKEN = "8261089656:AAF_JM39II4DpfiFzVTd0zsXZKtKcDE5G9A"
 TELEGRAM_CHAT_ID = "6854863928"
 
 API_ACTIVITY = "https://data-api.polymarket.com/activity"
 
-def send_telegram_alert(message):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ EROARE: Nu ai setat datele de Telegram în Railway!")
-        return
-    
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-    try:
-        requests.post(url, json=payload)
-        print("✅ Raport trimis cu succes pe Telegram!")
-    except Exception as e:
-        print(f"❌ Eroare la trimiterea pe Telegram: {e}")
-
-# ... (restul codului tău de mai jos rămâne identic) ...
-
 # ==========================================
-# 2. LOGICA DE EXTRAGERE ȘI ANALIZĂ
+# 2. LOGICA DE EXTRAGERE ȘI TRIMITERE FISIER
 # ==========================================
-def analyze_wallet():
-    print(f"🔍 Extrag ultimele tranzacții pentru: {TARGET_ADDRESS}")
+def fetch_and_send_csv():
+    print(f"🔍 Extrag ultimele 200 tranzacții brute pentru: {TARGET_ADDRESS}")
     
     try:
-        # Cerem ultimele 200 de evenimente
         r = requests.get(API_ACTIVITY, params={"user": TARGET_ADDRESS, "limit": 200}, timeout=15)
         if r.status_code != 200:
-            send_telegram_alert(f"⚠️ Eroare API Polymarket: {r.status_code}")
+            print(f"⚠️ Eroare API Polymarket: {r.status_code}")
             return
-            
         data = r.json()
     except Exception as e:
-        send_telegram_alert(f"❌ Eroare de rețea: {e}")
+        print(f"❌ Eroare de rețea: {e}")
         return
 
     if not data:
-        send_telegram_alert("📉 Nu am găsit tranzacții pentru această adresă.")
+        print("📉 Nu am găsit date pentru această adresă.")
         return
 
-    total_tx = len(data)
+    # Numele fișierului pe care îl va genera
+    filename = "tranzactii_balena.csv"
     
-    # Analiză de bază
-    buys = [d for d in data if d.get("side") == "BUY"]
-    sells = [d for d in data if d.get("side") == "SELL"]
+    print("📝 Formatez datele în Excel (CSV)...")
     
-    # Piețele preferate
-    titles = [d.get("title", "Unknown") for d in data if "title" in d]
-    top_markets = Counter(titles).most_common(3)
-    
-    # Analiza prețurilor medii de cumpărare (ca să vedem dacă vânează reduceri)
-    buy_prices = [float(b.get("price", 0)) for b in buys if b.get("price")]
-    avg_buy_price = (sum(buy_prices) / len(buy_prices)) if buy_prices else 0
-    
-    # Formatăm un raport frumos pentru Telegram
-    raport = f"🕵️‍♂️ <b>RAPORT ANALIZĂ BALENĂ</b> 🕵️‍♂️\n"
-    raport += f"Adresă: <code>{TARGET_ADDRESS[:10]}...</code>\n\n"
-    
-    raport += f"📊 <b>Ultimele {total_tx} tranzacții extrase:</b>\n"
-    raport += f"🛒 Cumpărări (BUY): <b>{len(buys)}</b>\n"
-    raport += f"💰 Vânzări (SELL): <b>{len(sells)}</b>\n"
-    raport += f"💵 Preț mediu de BUY: <b>{avg_buy_price * 100:.1f}¢</b>\n\n"
-    
-    raport += f"🎯 <b>Top 3 Piețe Tranzacționate:</b>\n"
-    for idx, (market, count) in enumerate(top_markets, 1):
-        raport += f"{idx}. {market} ({count} txs)\n"
+    # Deschidem fișierul pentru scriere
+    with open(filename, mode="w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        # Capul de tabel
+        writer.writerow(["Data/Ora (UTC)", "Piața (Market)", "Acțiune (BUY/SELL)", "Tip", "Preț (USD)", "Acțiuni (Size)", "Total (USD)", "Hash Tranzacție"])
         
-    raport += "\n💡 <i>Concluzie script: Dacă prețul mediu este în jur de 30-40 cenți și tranzacționează aceeași piață obsesiv, confirmă teoria de Arbitraj Matematic.</i>"
-
-    # Trimitem alerta o singură dată
-    send_telegram_alert(raport)
+        for d in data:
+            timestamp = d.get("timestamp", "")
+            title = d.get("title", "Unknown")
+            side = d.get("side", "")
+            tx_type = d.get("type", "")
+            
+            # Polymarket returnează uneori stringuri, le facem float pentru calcule
+            try:
+                price = float(d.get("price", 0))
+                size = float(d.get("size", 0))
+            except:
+                price = 0
+                size = 0
+                
+            total_usd = price * size
+            tx_hash = d.get("transactionHash", "")
+            
+            writer.writerow([timestamp, title, side, tx_type, f"${price:.4f}", round(size, 2), f"${total_usd:.2f}", tx_hash])
+            
+    print(f"✅ Fișierul {filename} a fost creat cu succes!")
+    print("🚀 Îl trimit pe Telegram...")
+    
+    # Trimiterea fișierului pe Telegram ca Document
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+    
+    with open(filename, "rb") as file:
+        files = {"document": file}
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "caption": "📁 Aici ai fișierul brut cu ultimele 200 de tranzacții! Poți să-l deschizi în Excel sau Google Sheets pentru analiză."
+        }
+        
+        try:
+            req = requests.post(url, data=payload, files=files)
+            if req.status_code == 200:
+                print("✅ Fișier trimis cu succes pe Telegram!")
+            else:
+                print(f"❌ Eroare la trimiterea fișierului: {req.text}")
+        except Exception as e:
+            print(f"❌ Eroare la conexiunea cu Telegram: {e}")
 
 if __name__ == "__main__":
-    analyze_wallet()
-    # Adormim scriptul 24 de ore ca să nu se restarteze pe Railway și să îți facă spam pe telefon
-    print("💤 Analiză terminată. Botul intră în stand-by pentru 24h.")
+    fetch_and_send_csv()
+    # Îl punem pe pauză o zi ca să nu facă spam pe server
+    print("💤 Analiză terminată. Botul intră în stand-by.")
     time.sleep(86400)
