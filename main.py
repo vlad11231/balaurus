@@ -78,7 +78,7 @@ def fetch_and_send_csv():
         
         try:
             req = requests.post(url, data=payload, files=files)
-            if req.status_code == 1000:
+            if req.status_code == 200:
                 print("✅ Fișier trimis cu succes pe Telegram!")
             else:
                 print(f"❌ Eroare la trimiterea fișierului: {req.text}")
