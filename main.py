@@ -5,7 +5,7 @@ import time
 # ==========================================
 # 1. CONFIGURARE
 # ==========================================
-TARGET_ADDRESS = "0x1d0034134e339a309700ff2d34e99fa2d48b0313".lower()
+TARGET_ADDRESS = "0x63ce342161250d705dc0b16df89036c8e5f9ba9a".lower()
 
 # Datele tale de Telegram:
 TELEGRAM_TOKEN = "8261089656:AAF_JM39II4DpfiFzVTd0zsXZKtKcDE5G9A"
