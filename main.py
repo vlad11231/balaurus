@@ -44,13 +44,17 @@ def fetch_and_send_csv():
     
     with open(filename, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
-        writer.writerow(["Data/Ora (UTC)", "Piața (Market)", "Acțiune (BUY/SELL)", "Tip", "Preț (USD)", "Acțiuni (Size)", "Total (USD)", "Hash Tranzacție"])
+        # 👇 AM ADĂUGAT COLOANA "Direcție (UP/DOWN)" AICI 👇
+        writer.writerow(["Data/Ora (UTC)", "Piața (Market)", "Acțiune (BUY/SELL)", "Direcție (UP/DOWN)", "Tip", "Preț (USD)", "Acțiuni (Size)", "Total (USD)", "Hash Tranzacție"])
         
         for d in all_data:
             timestamp = d.get("timestamp", "")
             title = d.get("title", "Unknown")
             side = d.get("side", "")
             tx_type = d.get("type", "")
+            
+            # 👇 AM EXTRAS DIRECȚIA AICI 👇
+            outcome = d.get("outcome", "N/A")
             
             try:
                 price = float(d.get("price", 0))
@@ -62,7 +66,8 @@ def fetch_and_send_csv():
             total_usd = price * size
             tx_hash = d.get("transactionHash", "")
             
-            writer.writerow([timestamp, title, side, tx_type, f"${price:.4f}", round(size, 2), f"${total_usd:.2f}", tx_hash])
+            # 👇 AM INTRODUS 'outcome' ÎN RÂNDUL SCRIS ÎN EXCEL 👇
+            writer.writerow([timestamp, title, side, outcome, tx_type, f"${price:.4f}", round(size, 2), f"${total_usd:.2f}", tx_hash])
             
     print("🚀 Îl trimit pe Telegram...")
     
@@ -71,7 +76,7 @@ def fetch_and_send_csv():
         files = {"document": file}
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
-            "caption": f"📁 Aici ai fișierul brut cu ultimele {len(all_data)} tranzacții!\nE gata pentru o analiză avansată."
+            "caption": f"📁 Aici ai fișierul brut cu ultimele {len(all_data)} tranzacții!\nAcum include și direcția UP/DOWN."
         }
         
         try:
